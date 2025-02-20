@@ -1,0 +1,99 @@
+_base_ = [
+    '../_base_/models/cascade-mask-rcnn_r50_fpn_ty.py',
+    '../_base_/datasets/coco_instance.py',
+    '../_base_/schedules/schedule_1x.py', '../_base_/default_runtime.py'
+]
+
+# 我们还需要更改 head 中的 num_classes 以匹配数据集中的类别数
+
+# auto_scale_lr = dict(enable=True, base_batch_size=4)
+
+# model = dict(
+#     type='CascadeRCNN',
+#     roi_head=dict(
+#         bbox_head=[
+#             dict(num_classes=1),
+#             dict(num_classes=1),
+#             dict(num_classes=1)
+#         ],
+#         mask_head=[
+#             dict(num_classes=1),
+#             dict(num_classes=1),
+#             dict(num_classes=1)
+#         ],
+#     )
+# )
+
+# 修改数据集相关配置
+data_root = 'data/swd/'
+metainfo = {
+    'classes': ('swd',),
+    'palette': [
+        (220, 20, 60),
+    ]
+}
+train_dataloader = dict(
+    batch_size=4,
+    dataset=dict(
+        data_root=data_root,
+        metainfo=metainfo,
+        ann_file='train/train.json',
+        data_prefix=dict(img='train/')))
+val_dataloader = dict(
+    dataset=dict(
+        data_root=data_root,
+        metainfo=metainfo,
+        ann_file='val/val.json',
+        data_prefix=dict(img='val/')))
+test_dataloader = dict(
+    dataset=dict(
+        data_root=data_root,
+        metainfo=metainfo,
+        ann_file='test/test.json',
+        data_prefix=dict(img='test/')))
+
+# ===============修改评价指标相关配置==================
+val_evaluator = dict(ann_file=data_root + 'val/val.json', metric=['bbox', 'segm'], classwise=True)
+test_evaluator = dict(ann_file=data_root + 'test/test.json', metric=['bbox', 'segm'], classwise=True)  # 测试集标注文件
+
+# =============可视化分析=====================
+vis_backends = [
+    dict(type='LocalVisBackend'),  # 本地可视化后端
+    dict(type='TensorboardVisBackend')  # TensorBoard 后端
+]
+
+visualizer = dict(
+    type='DetLocalVisualizer',
+    vis_backends=vis_backends,
+    name='visualizer'
+)
+
+default_hooks = dict(
+    visualization=dict(
+        type='DetVisualizationHook',
+        draw=True,  # 是否绘制图像
+        show=False  # 是否显示窗口（一般用于调试，训练时关闭）
+    ),
+    checkpoint=dict(
+        type='CheckpointHook',
+        interval=5,  # 每 5 个 epoch 保存一次
+        max_keep_ckpts=3,  # 最多保留 3 个检查点
+        save_best='auto',  # 保存最佳模型
+    ),
+    # early_stopping=dict(
+    #     type="EarlyStoppingHook",
+    #     monitor="coco/segm_mAP",
+    #     patience=10,
+    #     min_delta=0.005),
+)
+
+# ====================epoch次数==========================
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=100, val_interval=5)
+
+# =======================设置优化器============================
+optim_wrapper = dict(
+    type='OptimWrapper',
+    optimizer=dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001))
+
+# 使用预训练的 Mask R-CNN 模型权重来做初始化，可以提高模型性能
+load_from = 'https://download.openmmlab.com/mmdetection/v2.0/cascade_rcnn/cascade_mask_rcnn_r50_fpn_1x_coco/cascade_mask_rcnn_r50_fpn_1x_coco_20200203-9d4dcb24.pth'
